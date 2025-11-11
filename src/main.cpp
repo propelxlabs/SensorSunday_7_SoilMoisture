@@ -9,20 +9,50 @@
 #define OLED_RESET -1
 Adafruit_SH1106_ESP32 display(21, 22);
 
-// ------------------- SENSOR & PUMP CONFIG -------------------
-#define SOIL_PIN 34         // Soil moisture analog input
-#define PUMP_PIN 25         // Motor/pump output pin
+// ------------------- SENSOR CONFIG -------------------
+#define SOIL_PIN 34  // Soil moisture analog input
 
-#define SOIL_THRESHOLD 2000 // Dry threshold (0-4095 for ESP32 ADC)
+// Calibration values (adjust for your sensor)
+const int AIR_VALUE = 4095;   // Dry
+const int WATER_VALUE = 1500; // Wet
 
 int soilValue = 0;
+int moisturePercent = 0;
+
+// ------------------- DRAW SMILEY -------------------
+void drawSmiley(String mood) {
+  int x = 105;  // Smiley center X
+  int y = 45;   // Smiley center Y
+  int r = 15;   // Face radius
+
+  // Face outline
+  display.drawCircle(x, y, r, WHITE);
+  display.drawCircle(x, y, r+1, WHITE);
+
+
+  // Eyes
+  display.fillCircle(x - 6, y - 5, 2, WHITE);
+  display.fillCircle(x + 6, y - 5, 2, WHITE);
+
+  // Mouth (made with lines)
+  if (mood == "happy") {
+    display.drawLine(x - 6, y + 5, x - 3, y + 8, WHITE);
+    display.drawLine(x - 3, y + 8, x + 3, y + 8, WHITE);
+    display.drawLine(x + 3, y + 8, x + 6, y + 5, WHITE);
+  } 
+  else if (mood == "normal") {
+    display.drawLine(x - 6, y + 7, x + 6, y + 7, WHITE);
+  } 
+  else if (mood == "sad") {
+    display.drawLine(x - 6, y + 10, x - 3, y + 7, WHITE);
+    display.drawLine(x - 3, y + 7, x + 3, y + 7, WHITE);
+    display.drawLine(x + 3, y + 7, x + 6, y + 10, WHITE);
+  }
+}
 
 void setup() {
   Serial.begin(115200);
-
   pinMode(SOIL_PIN, INPUT);
-  pinMode(PUMP_PIN, OUTPUT);
-  digitalWrite(PUMP_PIN, LOW); // Pump off initially
 
   Wire.begin(21, 22);
   Wire.setClock(400000);
@@ -30,47 +60,51 @@ void setup() {
   display.clearDisplay();
   display.display();
 
-  Serial.println("Soil Moisture Monitor with Pump Started");
+  Serial.println("🌿 Soil Moisture Monitor with Smiley Started 🌿");
 }
 
 void loop() {
-  // --- Read soil sensor ---
-  soilValue = analogRead(SOIL_PIN); // 0 (wet) to 4095 (dry)
+  // --- Read sensor ---
+  soilValue = analogRead(SOIL_PIN);
+  Serial.println(soilValue);
+  moisturePercent = map(soilValue, AIR_VALUE, WATER_VALUE, 0, 100);
+  moisturePercent = constrain(moisturePercent, 0, 100);
 
-  // --- Pump control ---
-  if (soilValue > SOIL_THRESHOLD) {
-    digitalWrite(PUMP_PIN, HIGH); // Soil is dry → turn on pump
+  // --- Determine mood ---
+  String mood;
+  if (moisturePercent < 30) {
+    mood = "sad";
+  } else if (moisturePercent <= 70) {
+    mood = "normal";
   } else {
-    digitalWrite(PUMP_PIN, LOW);  // Soil is wet → turn off pump
+    mood = "happy";
   }
 
-  // --- OLED display ---
+  // --- Serial output ---
+  Serial.println("PropelX Labs");
+  Serial.print("Soil Moisture: ");
+  Serial.print(moisturePercent);
+  Serial.println("%");
+
+  // --- OLED Display ---
   display.clearDisplay();
 
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(5, 0);
-  display.println("Soil Moisture Monitor");
+  display.println("PropelX Labs");
 
-  // Soil value
   display.setCursor(5, 15);
-  display.print("Value: ");
-  display.println(soilValue);
+  display.println("Moisture:");
+  display.setCursor(5, 35);
+  display.setTextSize(3);
+  display.print(moisturePercent);
+  display.println("%");
 
-  // Moisture bar
-  int barWidth = map(soilValue, 0, 4095, SCREEN_WIDTH-10, 0); // inverted: low = wet
-  display.drawRect(5, 35, SCREEN_WIDTH-10, 15, WHITE);
-  display.fillRect(5, 35, barWidth, 15, WHITE);
-
-  // Pump status
-  display.setCursor(5, 55);
-  if (digitalRead(PUMP_PIN)) {
-    display.println("Pump: ON");
-  } else {
-    display.println("Pump: OFF");
-  }
+  // Draw smiley
+  drawSmiley(mood);
 
   display.display();
 
-  delay(500); // Update twice per second
+  delay(1000);
 }
